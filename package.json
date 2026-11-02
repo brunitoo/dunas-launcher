@@ -1,0 +1,10 @@
+{
+  "name": "dunas-launcher",
+  "version": "1.0.0",
+  "description": "Lanzador personalizado para Samsung Tizen (TizenBrew)",
+  "packageType": "app",
+  "appName": "Dunas Launcher",
+  "appPath": "app/index.html",
+  "keys": [],
+  "license": "MIT"
+}
