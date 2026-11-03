@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Dunas Launcher</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root{--glass:rgba(24,22,34,.62);--line:rgba(255,255,255,.14);--txt:#f4efe9}
+*{box-sizing:border-box;margin:0}
+html,body{width:100%;height:100%;overflow:hidden;background:#1a1626;color:var(--txt);
+font-family:"SamsungOne","Segoe UI",Helvetica,Arial,sans-serif}
+#bg{position:fixed;inset:0;background-size:cover;background-position:center;transition:background 1s}
+#bg::after{content:"";position:absolute;inset:0;background:linear-gradient(transparent 45%,rgba(14,12,24,.75))}
+h1{position:fixed;left:6%;top:9%;font-size:3.2vw;font-weight:500;letter-spacing:-.02em}
+#weather{position:fixed;right:6%;top:8%;display:flex;gap:1.4vw;align-items:center;padding:.9vw 1.8vw;
+border-radius:1.4vw;background:var(--glass);font-size:1.5vw}
+#weather small{display:block;font-size:.85vw;opacity:.7}
+#weather b{font-weight:500;font-size:1.9vw}
+#weather i{width:1px;height:2vw;background:var(--line)}
+#dock{position:fixed;left:3%;right:3%;bottom:19%;display:flex;justify-content:space-around;
+padding:2vw 1vw 1.4vw;border-radius:2.2vw;background:var(--glass);border:1px solid var(--line)}
+.app{width:8.4vw;text-align:center;font-size:1.05vw;opacity:.9}
+.app .ico{height:8.4vw;border-radius:1.8vw;display:flex;align-items:center;justify-content:center;
+font-weight:800;font-size:1.7vw;margin-bottom:.9vw;transition:transform .15s,box-shadow .15s;border:1px solid var(--line)}
+.app.sel{opacity:1}
+.app.sel .ico{transform:scale(1.14);box-shadow:0 0 0 .2vw #fff,0 1.2vw 3vw rgba(0,0,0,.5)}
+.app.move .ico{box-shadow:0 0 0 .25vw #ffb454,0 1.2vw 3vw rgba(0,0,0,.5)}
+#bar{position:fixed;bottom:8%;width:100%;display:flex;justify-content:center;gap:4vw;font-size:1.2vw}
+#bar span{padding:.5vw 1.2vw;border-radius:2vw;opacity:.75}
+#bar span.sel{opacity:1;background:var(--glass);box-shadow:0 0 0 .15vw #fff}
+#msg{position:fixed;left:50%;bottom:3%;transform:translateX(-50%);font-size:1vw;opacity:0;transition:opacity .3s;
+background:var(--glass);padding:.5vw 1.2vw;border-radius:1vw}
+</style>
+</head>
+<body>
+<div id="bg"></div>
+<h1 id="hi">Buenos días</h1>
+<div id="weather"><div><small id="city">Barcelona</small><span id="cond">…</span></div>
+<b id="temp">--°</b><i></i><b id="clock">--:--</b></div>
+<div id="dock"></div>
+<div id="bar"></div>
+<div id="msg"></div>
+
+<script>
+/* ================= CONFIGURACIÓN ================= */
+var CITY = { name: "Barcelona", lat: 41.3874, lon: 2.1686 };
+
+/* IDs de apps de Samsung: pueden variar según modelo y país.
+   Si una app no abre, mira el ID real en la guía del README. */
+var APPS = [
+  { id:"prime",   name:"Prime Video", bg:"linear-gradient(135deg,#4aa0e0,#1f6fb0)", t:"prime", appId:"3201910019365" },
+  { id:"netflix", name:"Netflix",     bg:"#14100f", t:"N", appId:"3201907018807" },
+  { id:"disney",  name:"Disney+",     bg:"linear-gradient(135deg,#2ab5c8,#0b2f4f)", t:"D+", appId:"3201901017640" },
+  { id:"plex",    name:"Plex",        bg:"#1f1f22", t:"PLEX", appId:"" },
+  { id:"directv", name:"DIRECTV GO",  bg:"linear-gradient(135deg,#0a3a7a,#06214a)", t:"GO", appId:"" }
+];
+
+/* FONDO ALEATORIO
+   MODO "online": foto al azar de internet (picsum.photos) cada vez que abres el lanzador
+   MODO "local" : foto al azar de tu carpeta app/fondos (lista abajo)
+   Si algo falla se usa un degradado. */
+var BG_MODE = "online";
+var LOCAL_BGS = ["fondos/1.jpg","fondos/2.jpg","fondos/3.jpg"];
+var FALLBACKS = [
+  "linear-gradient(180deg,#5a4a6b 0%,#c08a6a 55%,#2b2236 100%)",
+  "linear-gradient(180deg,#1d2b4a 0%,#4a6a8f 55%,#141a2b 100%)",
+  "linear-gradient(180deg,#2b1f1a 0%,#a2553a 55%,#1a1210 100%)"
+];
+/* ================================================== */
+
+var store = {
+  get:function(k,d){try{var v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}},
+  set:function(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
+};
+var $ = function(id){return document.getElementById(id)};
+var order = store.get("order", APPS.map(function(a){return a.id}));
+var zone = "dock", pos = 0, barPos = 0, moving = false;
+var BAR = ["Samsung","Ordenar","Fondo"];
+
+function randomBg(){
+  var url = BG_MODE==="local"
+    ? LOCAL_BGS[Math.floor(Math.random()*LOCAL_BGS.length)]
+    : "https://picsum.photos/1920/1080?random=" + Date.now();
+  var fb = FALLBACKS[Math.floor(Math.random()*FALLBACKS.length)];
+  var el = $("bg");
+  el.style.background = fb; el.style.backgroundSize = "cover";
+  var img = new Image();
+  img.onload = function(){ el.style.background = "url('"+url+"') center/cover" };
+  img.src = url;
+}
+function appList(){
+  var m = {}; APPS.forEach(function(a){m[a.id]=a});
+  var l = order.filter(function(i){return m[i]}).map(function(i){return m[i]});
+  APPS.forEach(function(a){ if(l.indexOf(a)<0) l.push(a) });
+  return l;
+}
+function render(){
+  var d = $("dock"); d.innerHTML = "";
+  appList().forEach(function(a,i){
+    var e = document.createElement("div");
+    e.className = "app" + (zone==="dock"&&i===pos?" sel":"") + (moving&&i===pos?" move":"");
+    e.innerHTML = '<div class="ico" style="background:'+a.bg+'">'+a.t+'</div>'+a.name;
+    d.appendChild(e);
+  });
+  var b = $("bar"); b.innerHTML = "";
+  BAR.forEach(function(n,i){
+    var s = document.createElement("span");
+    s.className = zone==="bar"&&i===barPos ? "sel" : "";
+    s.textContent = n; b.appendChild(s);
+  });
+}
+function toast(t){var m=$("msg");m.textContent=t;m.style.opacity=1;clearTimeout(toast.t);toast.t=setTimeout(function(){m.style.opacity=0},2500)}
+
+function launch(a){
+  if(!a.appId){ toast(a.name+": falta el ID de la app (ver README)"); return }
+  try{ tizen.application.launch(a.appId, function(){}, function(e){toast("No se pudo abrir "+a.name)}) }
+  catch(e){ toast("Esta función solo va en la TV") }
+}
+function exitApp(){ try{ tizen.application.getCurrentApplication().exit() }catch(e){ toast("Salir: solo en la TV") } }
+
+document.addEventListener("keydown", function(e){
+  var k = e.keyCode, n = APPS.length;
+  if(k===10009){ if(moving){moving=false;render()} else exitApp(); return }
+  if(zone==="dock"){
+    if(k===39||k===37){
+      var to = pos + (k===39?1:-1);
+      if(to<0||to>=n) return;
+      if(moving){ var l = appList().map(function(a){return a.id}); var t=l[pos]; l[pos]=l[to]; l[to]=t; order=l; store.set("order",order) }
+      pos = to;
+    }
+    else if(k===40 && !moving){ zone="bar" }
+    else if(k===13){ if(moving){moving=false;toast("Orden guardado")} else launch(appList()[pos]) }
+  } else {
+    if(k===39) barPos=Math.min(BAR.length-1,barPos+1);
+    else if(k===37) barPos=Math.max(0,barPos-1);
+    else if(k===38) zone="dock";
+    else if(k===13){
+      if(barPos===0) exitApp();
+      else if(barPos===1){ zone="dock"; moving=true; toast("Mueve con ◀ ▶ y pulsa OK") }
+      else { randomBg(); toast("Fondo nuevo") }
+    }
+  }
+  render();
+});
+
+/* Saludo y reloj */
+function tick(){
+  var d = new Date(), h = d.getHours();
+  $("hi").textContent = h<6 ? "Buenas noches" : h<13 ? "Buenos días" : h<21 ? "Buenas tardes" : "Buenas noches";
+  $("clock").textContent = ("0"+h).slice(-2)+":"+("0"+d.getMinutes()).slice(-2);
+}
+/* Tiempo con Open-Meteo (gratis, sin clave) */
+var WMO = {0:"Despejado",1:"Despejado",2:"Parcial",3:"Nublado",45:"Niebla",48:"Niebla",51:"Llovizna",53:"Llovizna",55:"Llovizna",
+61:"Lluvia",63:"Lluvia",65:"Lluvia fuerte",71:"Nieve",73:"Nieve",75:"Nieve",80:"Chubascos",81:"Chubascos",82:"Chubascos",95:"Tormenta",96:"Tormenta",99:"Tormenta"};
+function weather(){
+  $("city").textContent = CITY.name;
+  var x = new XMLHttpRequest();
+  x.open("GET","https://api.open-meteo.com/v1/forecast?latitude="+CITY.lat+"&longitude="+CITY.lon+"&current=temperature_2m,weather_code");
+  x.onload = function(){ try{
+    var c = JSON.parse(x.responseText).current;
+    $("temp").textContent = Math.round(c.temperature_2m)+"°";
+    $("cond").textContent = WMO[c.weather_code] || "—";
+  }catch(e){} };
+  x.send();
+}
+try{ if(window.tizen && tizen.tvinputdevice) tizen.tvinputdevice.registerKey("Back") }catch(e){}
+tick(); setInterval(tick,15000); weather(); setInterval(weather,900000); randomBg(); render();
+</script>
+</body>
+</html>
